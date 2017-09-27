@@ -11,43 +11,57 @@ byte leds[2];
 #define NUM_LEDS 16
 #define LEDS_PER_COLUMN 3
 #define LEDS_PER_SHIFTER 8
+#define SWITCH_PIN 2
+#define SPEED_PENTIOMETER_PIN A0
+#define RESISTOR_PIN A1
+
+
+int pulseSourceX = -1;
+int distanceFromPulse = 0;
+unsigned long lastMovement = 0;
+int threshold = 620;
  
 void setup() {
   //set pins to output because they are addressed in the main loop
   pinMode(latchPin, OUTPUT);
   pinMode(dataPin, OUTPUT);  
   pinMode(clockPin, OUTPUT);
+  pinMode(RESISTOR_PIN, INPUT);
+  pinMode(SWITCH_PIN, INPUT);
+  pinMode(SPEED_PENTIOMETER_PIN, INPUT);
   Serial.begin(9600);
-  Serial.println("reset");
 }
-
-int pulseSourceX = -1;
-int pulseSourceY = -1;
-int distanceFromPulse = 0;
 
 void loop() {
-  if (Serial.available() > 0) {
-    Serial.read();
-    Serial.println("pulsing");
+  // if button pressed
+  if (digitalRead(SWITCH_PIN) == 1) {
+    endPulse();
+    setLed(NUM_LEDS -1, 1);
+    updateShiftRegister();
+  } else {
+    // if light resistor surpassed the threshold
+    if (analogRead(RESISTOR_PIN) > threshold) {
+      Serial.read();
 
-    pulse(0, 1);
+      startPulse();
+    }
+
+    advanceAnimation();
   }
 
-  advanceAnimation();
-
-  delay(100);
+  delay(10);
 }
 
-void pulse(int startX, int startY) {
-  pulseSourceX = startX;
-  pulseSourceY = startY;
+void startPulse() {
+  pulseSourceX = 0;
 
+  lastMovement = millis();
   distanceFromPulse = 0;
 }
 
 void advanceAnimation() {
-  if (pulseSourceX >= 0 && pulseSourceY >= 0) {
-    //Serial.println(distanceFromPulse);
+  if (pulseSourceX >= 0) {
+
     if (distanceFromPulse > floor(NUM_LEDS / LEDS_PER_COLUMN)) {
       endPulse();
     } else {
@@ -63,37 +77,37 @@ void advancePulse() {
     int x = floor(i / LEDS_PER_COLUMN);
     int y = i % LEDS_PER_COLUMN;
 
-    float distance = sqrt(sq(x - pulseSourceX) + sq(y - pulseSourceY));
+    int distance = x - pulseSourceX;
 
-    //Serial.println(x);
-    /* Serial.println(y); */
-    /* Serial.println(ceil(distance == distanceFromPulse)); */
-
-    /* if(floor(distance == distanceFromPulse)) */
     if(x == distanceFromPulse)
       setLed(i, 1);
     else
       setLed(i, 0);
   }
-  distanceFromPulse++;
+
+  int speed = analogRead(SPEED_PENTIOMETER_PIN);
+
+  if (millis() - lastMovement > speed) {
+    distanceFromPulse++;
+    lastMovement = millis();
+  }
 }
 
 void endPulse() {
   distanceFromPulse = 0;
   pulseSourceX = -1;
-  pulseSourceY = -1;
   leds[0] = 0;
   leds[1] = 0;
 }
 
 void setLed(int led, int onOrOff) {
-  int shifter = led / LEDS_PER_SHIFTER;
+  int shifterIndex = led / LEDS_PER_SHIFTER;
 
   int ledToSet = led % LEDS_PER_SHIFTER;
   if (onOrOff == 1)
-    bitSet(leds[shifter], ledToSet);
+    bitSet(leds[shifterIndex], ledToSet);
   else
-    bitClear(leds[shifter], ledToSet);
+    bitClear(leds[shifterIndex], ledToSet);
 }
 
 void printBits(byte myByte){
